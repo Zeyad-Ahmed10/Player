@@ -1,0 +1,18 @@
+name: quran_player
+description: Mp3 folder player with sleep timer
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  just_audio: ^0.9.40
+  just_audio_background: ^0.0.1-beta.13
+  file_picker: ^8.1.2
+  permission_handler: ^11.3.1
+
+flutter:
+  uses-material-design: true
