@@ -54,18 +54,33 @@ class _HomeState extends State<Home> {
   DateTime? endAt;
   Duration? left;
 
+  LoopMode loop = LoopMode.off;
+  bool autoNext = true;
+  bool userSkip = false;
+  int? lastIndex;
+
   static const presets = <String, int>{
     '30 دقيقة': 30,
     'ساعة': 60,
     'ساعة ونص': 90,
     'ساعتين': 120,
-    '3 ساعات': 180,
   };
 
   @override
   void initState() {
     super.initState();
     if (Platform.isAndroid) Permission.notification.request();
+    player.currentIndexStream.listen((i) {
+      if (i != null &&
+          lastIndex != null &&
+          i != lastIndex &&
+          !autoNext &&
+          !userSkip) {
+        player.pause();
+        player.seek(Duration.zero, index: i);
+      }
+      lastIndex = i;
+    });
   }
 
   @override
@@ -89,6 +104,31 @@ class _HomeState extends State<Home> {
   void msg(String t) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
+  void userAction(void Function() f) {
+    userSkip = true;
+    f();
+    Future.delayed(const Duration(milliseconds: 800), () => userSkip = false);
+  }
+
+  String get loopLabel => loop == LoopMode.off
+      ? 'التكرار: مغلق'
+      : loop == LoopMode.all
+          ? 'التكرار: كل الملفات'
+          : 'التكرار: الملف الحالي';
+
+  IconData get loopIcon =>
+      loop == LoopMode.one ? Icons.repeat_one : Icons.repeat;
+
+  void cycleLoop() {
+    final next = loop == LoopMode.off
+        ? LoopMode.all
+        : loop == LoopMode.all
+            ? LoopMode.one
+            : LoopMode.off;
+    player.setLoopMode(next);
+    setState(() => loop = next);
   }
 
   Future<void> pickFolder() async {
@@ -115,23 +155,27 @@ class _HomeState extends State<Home> {
       }
 
       await player.stop();
+      lastIndex = null;
       final sources = found
           .map((f) => AudioSource.file(
                 f.path,
                 tag: MediaItem(id: f.path, title: nameOf(f)),
               ))
           .toList();
+      userSkip = true;
       await player.setAudioSource(
         ConcatenatingAudioSource(children: sources),
         initialIndex: 0,
         initialPosition: Duration.zero,
       );
-      await player.setLoopMode(LoopMode.all);
+      await player.setLoopMode(loop);
       setState(() {
         folder = dir;
         files = found;
       });
       player.play();
+      Future.delayed(
+          const Duration(milliseconds: 800), () => userSkip = false);
     } catch (e) {
       msg('حصل خطأ: $e');
     }
@@ -148,6 +192,54 @@ class _HomeState extends State<Home> {
     });
     setState(() => left = d);
     msg('التطبيق هيقفل بعد ${fmt(d)}');
+  }
+
+  Future<void> customTime() async {
+    final h = TextEditingController(text: '0');
+    final m = TextEditingController(text: '30');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('حدد الوقت'),
+        content: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: h,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'ساعات'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: m,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'دقائق'),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('إلغاء')),
+          FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('ابدأ')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final d = Duration(
+      hours: int.tryParse(h.text) ?? 0,
+      minutes: int.tryParse(m.text) ?? 0,
+    );
+    if (d.inSeconds <= 0) {
+      msg('اكتب وقت صحيح');
+      return;
+    }
+    setSleep(d);
   }
 
   void cancelSleep() {
@@ -201,7 +293,7 @@ class _HomeState extends State<Home> {
                           i == cur ? Icons.graphic_eq : Icons.music_note),
                       title: Text(nameOf(files[i])),
                       onTap: () {
-                        player.seek(Duration.zero, index: i);
+                        userAction(() => player.seek(Duration.zero, index: i));
                         player.play();
                       },
                     ),
@@ -220,7 +312,7 @@ class _HomeState extends State<Home> {
                     IconButton(
                       iconSize: 40,
                       icon: const Icon(Icons.skip_previous),
-                      onPressed: player.seekToPrevious,
+                      onPressed: () => userAction(player.seekToPrevious),
                     ),
                     IconButton(
                       iconSize: 68,
@@ -231,14 +323,34 @@ class _HomeState extends State<Home> {
                     IconButton(
                       iconSize: 40,
                       icon: const Icon(Icons.skip_next),
-                      onPressed: player.seekToNext,
+                      onPressed: () => userAction(player.seekToNext),
                     ),
                   ],
                 );
               },
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Wrap(
+                spacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  ActionChip(
+                    avatar: Icon(loopIcon, size: 18),
+                    label: Text(loopLabel),
+                    onPressed: cycleLoop,
+                  ),
+                  FilterChip(
+                    label: const Text('تشغيل التالي تلقائياً'),
+                    selected: autoNext,
+                    onSelected: (v) => setState(() => autoNext = v),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 24),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: Column(
                 children: [
                   Text(
@@ -259,6 +371,11 @@ class _HomeState extends State<Home> {
                           onPressed: () =>
                               setSleep(Duration(minutes: e.value)),
                         ),
+                      ActionChip(
+                        avatar: const Icon(Icons.edit, size: 18),
+                        label: const Text('وقت مخصص'),
+                        onPressed: customTime,
+                      ),
                       if (left != null)
                         ActionChip(
                           label: const Text('إلغاء المؤقت'),
