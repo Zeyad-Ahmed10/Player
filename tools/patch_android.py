@@ -42,7 +42,6 @@ m.write_text(s)
 # ---- MainActivity ----
 for f in list(root.rglob('MainActivity.kt')) + list(root.rglob('MainActivity.java')):
     f.unlink()
-kt = next(root.rglob('kotlin'), None) or (root / 'kotlin')
 target = root / 'kotlin' / 'com' / 'example' / 'quran_player'
 target.mkdir(parents=True, exist_ok=True)
 (target / 'MainActivity.kt').write_text('''package com.example.quran_player
@@ -50,5 +49,17 @@ target.mkdir(parents=True, exist_ok=True)
 import com.ryanheise.audioservice.AudioServiceActivity
 
 class MainActivity : AudioServiceActivity()
+''')
+
+# ---- Force compileSdk 36 for all plugins ----
+init = pathlib.Path.home() / '.gradle' / 'init.d'
+init.mkdir(parents=True, exist_ok=True)
+(init / 'force_sdk.gradle').write_text('''allprojects {
+    afterEvaluate { p ->
+        if (p.hasProperty('android')) {
+            p.android.compileSdkVersion 36
+        }
+    }
+}
 ''')
 print('patched OK')
