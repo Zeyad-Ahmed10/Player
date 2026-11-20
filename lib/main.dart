@@ -59,6 +59,8 @@ class _HomeState extends State<Home> {
   bool userSkip = false;
   int? lastIndex;
 
+  static const exts = ['.mp3', '.mp4', '.m4a'];
+
   static const presets = <String, int>{
     '30 دقيقة': 30,
     'ساعة': 60,
@@ -93,7 +95,8 @@ class _HomeState extends State<Home> {
 
   String nameOf(File f) {
     final n = f.path.split(Platform.pathSeparator).last;
-    return n.toLowerCase().endsWith('.mp3') ? n.substring(0, n.length - 4) : n;
+    final dot = n.lastIndexOf('.');
+    return dot > 0 ? n.substring(0, dot) : n;
   }
 
   String fmt(Duration d) {
@@ -145,12 +148,15 @@ class _HomeState extends State<Home> {
       final found = Directory(dir)
           .listSync(recursive: true, followLinks: false)
           .whereType<File>()
-          .where((f) => f.path.toLowerCase().endsWith('.mp3'))
+          .where((f) {
+            final p = f.path.toLowerCase();
+            return exts.any((e) => p.endsWith(e));
+          })
           .toList()
         ..sort((a, b) => a.path.compareTo(b.path));
 
       if (found.isEmpty) {
-        msg('مفيش ملفات mp3 في الفولدر ده');
+        msg('مفيش ملفات صوت في الفولدر ده');
         return;
       }
 
